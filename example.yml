@@ -22,7 +22,7 @@ in:
     - {name: comment, type: string}
 filters:
   - type: encrypt
-    algorithm: AES-256-ECB
+    algorithm: AES-256-CBC
     key_hex: EBD94058365DBC518E794FB4A2B7E11C1DE5796FC81E280624D3F583B8A900C6
     iv_hex: 2297945158ED983BD4B967C4B37B663B
     column_names: [comment]

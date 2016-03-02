@@ -2,7 +2,17 @@
 
 Converts columns using an encryption algorithm such as AES.
 
-Encrypted value is a base64 string.
+Encrypted data is encoded using base64. For example, if you have following input records:
+
+    id,password,comment
+    1,super,a
+    2,secret,b
+
+You can apply encryption to password column and get following outputs:
+
+    id,password,comment
+    1,ayxU9lMA1iASdHGy/eAlWw==,a
+    2,v8ffsUOfspaqZ1KI7tPz+A==,b
 
 ## Overview
 
@@ -17,7 +27,7 @@ Encrypted value is a base64 string.
 
 ## Algorithms
 
-Supported algorithms are:
+Available algorithms are:
 
 * **AES-256-CBC** (recommended)
 * AES-192-CBC
@@ -32,28 +42,9 @@ AES-256-CBC is the recommended algorithm. The other algorithms are prepared for 
 
 ### Using standard PBKDF2 Password-based Encryption algorithm
 
-PBKDF2 is a standard algorithm to generate key and iv from a password.
+PBKDF2 is a standard (PKCS #5) algorithm to generate key and iv from a password.
 
-To generate it, you can use following ruby script:
-
-    #/usr/bin/env ruby
-    require 'openssl'
-    
-    if ARGV.length != 2
-      puts "Usage: #{$0} <algorithm> <password>"
-      exit 1
-    end
-    
-    cipher = OpenSSL::Cipher.new ARGV[0]
-    password = ARGV[1]
-    
-    cipher.encrypt
-    iv = cipher.random_iv
-    salt = OpenSSL::Random.random_bytes(16)
-    key = OpenSSL::PKCS5.pbkdf2_hmac(password, salt, 20000, cipher.key_len, OpenSSL::Digest::SHA256.new)
-    
-    puts "key=#{key.unpack('H*')[0].upcase}"
-    puts "iv =#{iv.unpack('H*')[0].upcase}"
+To generate it, you can use following [genkey.rb](https://raw.githubusercontent.com/embulk/embulk-filter-encrypt/master/genkey.rb) script.
 
 You save above text as "genkey.rb", and run it as following:
 
@@ -61,12 +52,12 @@ You save above text as "genkey.rb", and run it as following:
 
 It shows key and iv as following:
 
-    key=FF69F0CADDFFA76CC08C629DFAEFFF3EA9650A2320FFE126D88FF9100446249F
-    iv =50D6267A078EFACD00CAEAA2A4064FC0
+    key=D0867C9310D061F17ACD11EB30DE68265DCB79849BE5FB2BE157919D19BF2F42
+    iv =2A1D6BD59D2DB50A59364BAD3B9B6544
 
-### Using openssl command
+### Using openssl EVP_BytesToKey algorithm
 
-You can use `openssl` command to generate key and iv from a password. If you use AES-256-CBC algorithm, you type following command:
+You can use `openssl` EVP_BytesToKey algorithm to generate key and iv from a password. If you use AES-256-CBC cipher algorithm, you type following command:
 
     $ echo secret | openssl enc -aes-256-cbc -a -nosalt -p
 
@@ -93,7 +84,13 @@ For example:
 
 ### PostgreSQL
 
-To decrypt value using PostgreSQL (provided as pgcrypto extension), you can use CBC. If you use CBC, you can decrypt data using `decrypt_iv(decode(encrypted_column, 'base64'), decode('here_is_key_hex', 'hex'), decode('here_is_iv_hex', 'hex'), 'aes')`. If you use ECB, you can decrypt data using `decrypt(decode(encrypted_column, 'base64'), decode('here_is_key_hex', 'hex'), 'aes')`
+To decrypt value using PostgreSQL (provided as pgcrypto extension), you can use CBC. If you use CBC, you can decrypt data using this function call:
+
+    decrypt_iv(decode(encrypted_column, 'base64'), decode('here_is_key_hex', 'hex'), decode('here_is_iv_hex', 'hex'), 'aes')
+
+If you use ECB, you can decrypt data this function call:
+
+    decrypt(decode(encrypted_column, 'base64'), decode('here_is_key_hex', 'hex'), 'aes')
 
 <!-- This doesn't work. why?
 ### MySQL
