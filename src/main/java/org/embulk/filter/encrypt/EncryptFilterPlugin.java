@@ -49,11 +49,11 @@ public class EncryptFilterPlugin
     public static enum Algorithm
     {
         AES_256_CBC("AES/CBC/PKCS5Padding", "AES", 256, true, "AES", "AES-256", "AES-256-CBC"),
-        AES_192_CBC("AES/CBC/PKCS5Padding", "AES", 192, true, "AES", "AES-192", "AES-192-CBC"),
-        AES_128_CBC("AES/CBC/PKCS5Padding", "AES", 128, true, "AES", "AES-128", "AES-128-CBC"),
-        AES_256_ECB("AES/ECB/PKCS5Padding", "AES", 256, false, "AES", "AES-256", "AES-256-ECB"),
-        AES_192_ECB("AES/ECB/PKCS5Padding", "AES", 192, false, "AES", "AES-192", "AES-192-ECB"),
-        AES_128_ECB("AES/ECB/PKCS5Padding", "AES", 128, false, "AES", "AES-128", "AES-128-ECB"),
+        AES_192_CBC("AES/CBC/PKCS5Padding", "AES", 192, true, "AES-192", "AES-192-CBC"),
+        AES_128_CBC("AES/CBC/PKCS5Padding", "AES", 128, true, "AES-128", "AES-128-CBC"),
+        AES_256_ECB("AES/ECB/PKCS5Padding", "AES", 256, false, "AES-256-ECB"),
+        AES_192_ECB("AES/ECB/PKCS5Padding", "AES", 192, false, "AES-192-ECB"),
+        AES_128_ECB("AES/ECB/PKCS5Padding", "AES", 128, false, "AES-128-ECB"),
         ;
 
         private final String javaName;
