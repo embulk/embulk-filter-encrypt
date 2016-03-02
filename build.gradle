@@ -74,10 +74,10 @@ Gem::Specification.new do |spec|
   spec.name          = "${project.name}"
   spec.version       = "${project.version}"
   spec.authors       = ["Sadayuki Furuhashi"]
-  spec.summary       = %[Encrypt filter plugin for Embulk]
+  spec.summary       = %[Encrypt columns using AES]
   spec.description   = %[Encrypt]
   spec.email         = ["frsyuki@gmail.com"]
-  spec.licenses      = ["MIT"]
+  spec.licenses      = ["Apache 2.0"]
   spec.homepage      = "https://github.com/embulk/embulk-filter-encrypt"
 
   spec.files         = `git ls-files`.split("\n") + Dir["classpath/*.jar"]
