@@ -44,7 +44,7 @@ AES-256-CBC is the recommended algorithm. The other algorithms are prepared for 
 
 PBKDF2 is a standard (PKCS #5) algorithm to generate key and iv from a password.
 
-To generate it, you can use following [genkey.rb](https://raw.githubusercontent.com/embulk/embulk-filter-encrypt/master/genkey.rb) script.
+To generate it, you can use [genkey.rb](https://raw.githubusercontent.com/embulk/embulk-filter-encrypt/master/genkey.rb) script.
 
 You save above text as "genkey.rb", and run it as following:
 
@@ -84,24 +84,32 @@ For example:
 
 ### PostgreSQL
 
-To decrypt value using PostgreSQL (provided as pgcrypto extension), you can use CBC. If you use CBC, you can decrypt data using this function call:
+You can use PostgreSQL's `decrypt_iv` or `decrypt` function to decrypt values (provided as pgcrypto extension). If you use CBC,
 
     decrypt_iv(decode(encrypted_column, 'base64'), decode('here_is_key_hex', 'hex'), decode('here_is_iv_hex', 'hex'), 'aes')
 
-If you use ECB, you can decrypt data this function call:
+If you use ECB,
 
     decrypt(decode(encrypted_column, 'base64'), decode('here_is_key_hex', 'hex'), 'aes')
 
 <!-- This doesn't work. why?
 ### MySQL
 
-To decrypt value using MySQL, you can use CBC. If you use CBC, you can decrypt data using `AES_DECRYPT(FROM_BASE64(encrypted_column), unhex('here_is_key_hex'), unhex(here_is_iv_hex'))`. If you use ECB, you can decrypt data using `AES_DECRYPT(FROM_BASE64(encrypted_column), unhex('here_is_key_hex'))`.
+You can use MySQL's `AES_DECRYPT` function to decrypt values. If you use CBC,
+
+    AES_DECRYPT(FROM_BASE64(encrypted_column), unhex('here_is_key_hex'), unhex(here_is_iv_hex'))
+
+If you use ECB,
+
+    AES_DECRYPT(FROM_BASE64(encrypted_column), unhex('here_is_key_hex'))
 -->
 
 <!-- not confirmed yet
 ### Hive
 
-To decrypt value using Hive's `aes_decrypt(input binary, key binary)` function (available since Hive 1.3.0), you need to use AES-256-ECB, AES-192-ECB, or AES-128-ECB. You can decrypt data using `aes_decrypt(unbase64(encrypted_column), unhex('here_is_key_hex'))` function call.
+You can use Hive's `aes_decrypt(input binary, key binary)` function (available since Hive 1.3.0) to decrypt values. But because Hive doesn't support CBC, you need to use AES-256-ECB, AES-192-ECB, or AES-128-ECB. Function call is:
+
+    aes_decrypt(unbase64(encrypted_column), unhex('here_is_key_hex'))
 -->
 
 ## Example
@@ -113,7 +121,6 @@ filters:
     key_hex: 098F6BCD4621D373CADE4E832627B4F60A9172716AE6428409885B8B829CCB05
     iv_hex: C9DD4BB33B827EB1FBA1B16A0074D460
 ```
-
 
 ## Build
 
