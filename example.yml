@@ -1,0 +1,30 @@
+in:
+  type: file
+  path_prefix: example.csv.gz
+  decoders:
+  - {type: gzip}
+  parser:
+    charset: UTF-8
+    newline: CRLF
+    type: csv
+    delimiter: ','
+    quote: '"'
+    escape: '"'
+    trim_if_not_quoted: false
+    skip_header_lines: 1
+    allow_extra_columns: false
+    allow_optional_columns: false
+    columns:
+    - {name: id, type: long}
+    - {name: account, type: long}
+    - {name: time, type: timestamp, format: '%Y-%m-%d %H:%M:%S'}
+    - {name: purchase, type: timestamp, format: '%Y%m%d'}
+    - {name: comment, type: string}
+filters:
+  - type: encrypt
+    algorithm: AES-256-ECB
+    key_hex: EBD94058365DBC518E794FB4A2B7E11C1DE5796FC81E280624D3F583B8A900C6
+    iv_hex: 2297945158ED983BD4B967C4B37B663B
+    column_names: [comment]
+out:
+  type: stdout
