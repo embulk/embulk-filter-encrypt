@@ -1,47 +1,42 @@
 package org.embulk.filter.encrypt;
 
-import java.util.List;
-import java.util.Set;
-import java.util.HashSet;
-import java.util.EnumSet;
-import javax.crypto.Cipher;
-import javax.crypto.SecretKey;
-import javax.crypto.SecretKeyFactory;
-import javax.crypto.spec.SecretKeySpec;
-import javax.crypto.spec.IvParameterSpec;
-import javax.crypto.spec.PBEKeySpec;
-import javax.crypto.NoSuchPaddingException;
-import javax.crypto.BadPaddingException;
-import javax.crypto.IllegalBlockSizeException;
-import java.security.AlgorithmParameters;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.spec.KeySpec;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 import com.google.common.base.Optional;
 import com.google.common.io.BaseEncoding;
 import org.embulk.config.Config;
 import org.embulk.config.ConfigDefault;
-import org.embulk.config.ConfigDiff;
+import org.embulk.config.ConfigException;
 import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
 import org.embulk.config.TaskSource;
-import org.embulk.config.ConfigException;
 import org.embulk.spi.Column;
-import org.embulk.spi.DataException;
 import org.embulk.spi.ColumnVisitor;
-import org.embulk.spi.type.StringType;
+import org.embulk.spi.DataException;
 import org.embulk.spi.Exec;
 import org.embulk.spi.FilterPlugin;
 import org.embulk.spi.Page;
 import org.embulk.spi.PageBuilder;
-import org.embulk.spi.PageReader;
 import org.embulk.spi.PageOutput;
+import org.embulk.spi.PageReader;
 import org.embulk.spi.Schema;
-import org.embulk.spi.time.Timestamp;
+
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.util.EnumSet;
+import java.util.List;
+
+import static java.lang.String.format;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.apache.commons.lang3.StringUtils.join;
 
 public class EncryptFilterPlugin
         implements FilterPlugin
@@ -53,8 +48,7 @@ public class EncryptFilterPlugin
         AES_128_CBC("AES/CBC/PKCS5Padding", "AES", 128, true, "AES-128", "AES-128-CBC"),
         AES_256_ECB("AES/ECB/PKCS5Padding", "AES", 256, false, "AES-256-ECB"),
         AES_192_ECB("AES/ECB/PKCS5Padding", "AES", 192, false, "AES-192-ECB"),
-        AES_128_ECB("AES/ECB/PKCS5Padding", "AES", 128, false, "AES-128-ECB"),
-        ;
+        AES_128_ECB("AES/ECB/PKCS5Padding", "AES", 128, false, "AES-128-ECB");
 
         private final String javaName;
         private final String javaKeySpecName;
@@ -136,9 +130,7 @@ public class EncryptFilterPlugin
     {
         PluginTask task = config.loadConfig(PluginTask.class);
 
-        if (!task.getKeyHex().isPresent()) {
-        }
-        else if (task.getAlgorithm().useIv() && !task.getIvHex().isPresent()) {
+        if (task.getAlgorithm().useIv() && !task.getIvHex().isPresent()) {
             throw new ConfigException("Algorithm '" + task.getAlgorithm() + "' requires initialization vector. Please generate one and set it to iv_hex option.");
         }
         else if (!task.getAlgorithm().useIv() && task.getIvHex().isPresent()) {
