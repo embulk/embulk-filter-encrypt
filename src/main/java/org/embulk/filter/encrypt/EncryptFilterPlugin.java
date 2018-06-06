@@ -106,11 +106,57 @@ public class EncryptFilterPlugin
         }
     }
 
+    public enum Encoder
+    {
+        BASE64("base64", BaseEncoding.base64()),
+        HEX("hex", BaseEncoding.base16());
+
+        private final BaseEncoding encoding;
+        private final String name;
+
+        Encoder(String name, BaseEncoding encoding)
+        {
+            this.name = name;
+            this.encoding = encoding;
+        }
+
+        public String encode(byte[] bytes)
+        {
+            return encoding.encode(bytes);
+        }
+
+        @JsonCreator
+        public static Encoder fromName(String name)
+        {
+            EnumSet<Encoder> encoders = EnumSet.allOf(Encoder.class);
+            for (Encoder encoder : encoders) {
+                if (encoder.name.equals(name)) {
+                    return encoder;
+                }
+            }
+            throw new ConfigException(
+                    format("Unsupported encoding format '%s'. Supported encoding formats are %s.",
+                            name,
+                            join(encoders, ", ")));
+        }
+
+        @JsonValue
+        @Override
+        public String toString()
+        {
+            return name;
+        }
+    }
+
     public interface PluginTask
             extends Task
     {
         @Config("algorithm")
         public Algorithm getAlgorithm();
+
+        @Config("format")
+        @ConfigDefault("\"base64\"")
+        public Encoder getFormat();
 
         @Config("key_hex")
         @ConfigDefault("null")
@@ -180,7 +226,7 @@ public class EncryptFilterPlugin
     public PageOutput open(TaskSource taskSource, final Schema inputSchema,
             final Schema outputSchema, final PageOutput output)
     {
-        PluginTask task = taskSource.loadTask(PluginTask.class);
+        final PluginTask task = taskSource.loadTask(PluginTask.class);
 
         final Cipher cipher;
         try {
@@ -199,7 +245,7 @@ public class EncryptFilterPlugin
         return new PageOutput() {
             private final PageReader pageReader = new PageReader(inputSchema);
             private final PageBuilder pageBuilder = new PageBuilder(Exec.getBufferAllocator(), outputSchema, output);
-            private final BaseEncoding base64 = BaseEncoding.base64();
+            private final Encoder encoder = task.getFormat();
 
             @Override
             public void finish()
@@ -283,7 +329,7 @@ public class EncryptFilterPlugin
                                     // this must not happen because always doFinal is called
                                     throw new DataException(ex);
                                 }
-                                String encoded = base64.encode(encrypted);
+                                String encoded = encoder.encode(encrypted);
                                 pageBuilder.setString(column, encoded);
                             }
                             else {
