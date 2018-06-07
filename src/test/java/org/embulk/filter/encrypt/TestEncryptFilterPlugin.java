@@ -310,9 +310,9 @@ public class TestEncryptFilterPlugin
                     task.getKeyHex().orNull(),
                     task.getIvHex().orNull(),
                     BASE64);
-            // Since hex/base16 is a totally valid subset of base64, this won't yield
-            // an IllegalArgumentException when encoding, but a decrypting exception instead.
         }
+        // Since hex/base16 is a totally valid subset of base64, this won't yield
+        // an IllegalArgumentException when encoding, but a decrypting exception instead.
         catch (GeneralSecurityException ex) {
             return;
         }
@@ -331,7 +331,8 @@ public class TestEncryptFilterPlugin
     private PageReader applyFilter(ConfigSource config, Schema schema, Object... rawRecord)
     {
         if (rawRecord.length > schema.getColumnCount()) {
-            throw new UnsupportedOperationException("applyFilter() only supports a single record, Number of supplied values exceed the schema column size. ");
+            throw new UnsupportedOperationException("applyFilter() only supports a single record, " +
+                    "number of supplied values exceed the schema column size. ");
         }
         PluginTask task = config.loadConfig(PluginTask.class);
 
@@ -354,47 +355,52 @@ public class TestEncryptFilterPlugin
     private List applyFilter(ConfigSource config, Schema schema, List rawRecord)
     {
         try (PageReader reader = applyFilter(config, schema, rawRecord.toArray())) {
-            final Object[] filtered = new Object[schema.getColumnCount()];
-            schema.visitColumns(new ColumnVisitor()
-            {
-                @Override
-                public void booleanColumn(Column column)
-                {
-                    filtered[column.getIndex()] = reader.getBoolean(column);
-                }
-
-                @Override
-                public void longColumn(Column column)
-                {
-                    filtered[column.getIndex()] = reader.getLong(column);
-                }
-
-                @Override
-                public void doubleColumn(Column column)
-                {
-                    filtered[column.getIndex()] = reader.getDouble(column);
-                }
-
-                @Override
-                public void stringColumn(Column column)
-                {
-                    filtered[column.getIndex()] = reader.getString(column);
-                }
-
-                @Override
-                public void timestampColumn(Column column)
-                {
-                    filtered[column.getIndex()] = reader.getTimestamp(column);
-                }
-
-                @Override
-                public void jsonColumn(Column column)
-                {
-                    filtered[column.getIndex()] = reader.getJson(column);
-                }
-            });
-            return Arrays.asList(filtered);
+            return readToList(reader, schema);
         }
+    }
+
+    private static List readToList(final PageReader reader, Schema schema)
+    {
+        final Object[] filtered = new Object[schema.getColumnCount()];
+        schema.visitColumns(new ColumnVisitor()
+        {
+            @Override
+            public void booleanColumn(Column column)
+            {
+                filtered[column.getIndex()] = reader.getBoolean(column);
+            }
+
+            @Override
+            public void longColumn(Column column)
+            {
+                filtered[column.getIndex()] = reader.getLong(column);
+            }
+
+            @Override
+            public void doubleColumn(Column column)
+            {
+                filtered[column.getIndex()] = reader.getDouble(column);
+            }
+
+            @Override
+            public void stringColumn(Column column)
+            {
+                filtered[column.getIndex()] = reader.getString(column);
+            }
+
+            @Override
+            public void timestampColumn(Column column)
+            {
+                filtered[column.getIndex()] = reader.getTimestamp(column);
+            }
+
+            @Override
+            public void jsonColumn(Column column)
+            {
+                filtered[column.getIndex()] = reader.getJson(column);
+            }
+        });
+        return Arrays.asList(filtered);
     }
 
     private static String decrypt(String ciphertext, Algorithm algo, String keyHex, String ivHex, Encoder encoder)
