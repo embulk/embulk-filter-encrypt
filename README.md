@@ -118,6 +118,7 @@ You can use Hive's `aes_decrypt(input binary, key binary)` function (available s
 ```yaml
 filters:
   - type: encrypt
+    algorithm: AES-256-CBC
     column_names: [password, ip]
     key_hex: 098F6BCD4621D373CADE4E832627B4F60A9172716AE6428409885B8B829CCB05
     iv_hex: C9DD4BB33B827EB1FBA1B16A0074D460
