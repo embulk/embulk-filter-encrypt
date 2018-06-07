@@ -320,9 +320,11 @@ public class TestEncryptFilterPlugin
     }
 
     @Test
-    public void test_config_default_format_should_be_base64()
+    public void default_format_config_should_be_base64()
     {
-        ConfigSource config = defaultConfig().set("column_names", emptyList());
+        ConfigSource config = defaultConfig()
+                .remove("format")
+                .set("column_names", emptyList());
         PluginTask task = config.loadConfig(PluginTask.class);
         assertEquals(task.getFormat(), BASE64);
     }
@@ -332,7 +334,7 @@ public class TestEncryptFilterPlugin
     {
         if (rawRecord.length > schema.getColumnCount()) {
             throw new UnsupportedOperationException("applyFilter() only supports a single record, " +
-                    "number of supplied values exceed the schema column size. ");
+                    "number of supplied values exceed the schema column size.");
         }
         PluginTask task = config.loadConfig(PluginTask.class);
 
@@ -411,8 +413,8 @@ public class TestEncryptFilterPlugin
             BadPaddingException,
             IllegalBlockSizeException
     {
-        SecretKeySpec key = new SecretKeySpec(base16().decode(keyHex), algo.getJavaKeySpecName());
         Cipher cipher = Cipher.getInstance(algo.getJavaName());
+        SecretKeySpec key = new SecretKeySpec(base16().decode(keyHex), algo.getJavaKeySpecName());
         if (algo.useIv()) {
             requireNonNull(ivHex, format("IV is required for this algorithm (%s)", algo));
             IvParameterSpec iv = new IvParameterSpec(base16().decode(ivHex));
