@@ -39,6 +39,7 @@ import static org.embulk.filter.encrypt.EncryptFilterPlugin.Algorithm;
 import static org.embulk.filter.encrypt.EncryptFilterPlugin.Algorithm.AES_128_CBC;
 import static org.embulk.filter.encrypt.EncryptFilterPlugin.Algorithm.AES_128_ECB;
 import static org.embulk.filter.encrypt.EncryptFilterPlugin.Algorithm.AES_192_CBC;
+import static org.embulk.filter.encrypt.EncryptFilterPlugin.Algorithm.AES_192_ECB;
 import static org.embulk.filter.encrypt.EncryptFilterPlugin.Algorithm.AES_256_CBC;
 import static org.embulk.filter.encrypt.EncryptFilterPlugin.Algorithm.AES_256_ECB;
 import static org.embulk.filter.encrypt.EncryptFilterPlugin.Encoder;
@@ -185,7 +186,7 @@ public class TestEncryptFilterPlugin
         assertEquals(
                 plaintext,
                 decrypt((String) applyFilter(config, schema, ImmutableList.of(plaintext)).get(0),
-                        AES_256_ECB,
+                        AES_192_ECB,
                         config));
     }
 
