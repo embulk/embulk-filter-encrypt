@@ -135,7 +135,7 @@ public class EncryptFilterPlugin
                 }
             }
             throw new ConfigException(
-                    format("Unsupported encoding format '%s'. Supported encoding formats are %s.",
+                    format("Unsupported output encoding '%s'. Supported encodings are %s.",
                             name,
                             join(encoders, ", ")));
         }
@@ -154,9 +154,9 @@ public class EncryptFilterPlugin
         @Config("algorithm")
         public Algorithm getAlgorithm();
 
-        @Config("format")
+        @Config("output_encoding")
         @ConfigDefault("\"base64\"")
-        public Encoder getFormat();
+        public Encoder getOutputEncoding();
 
         @Config("key_hex")
         @ConfigDefault("null")
@@ -245,7 +245,7 @@ public class EncryptFilterPlugin
         return new PageOutput() {
             private final PageReader pageReader = new PageReader(inputSchema);
             private final PageBuilder pageBuilder = new PageBuilder(Exec.getBufferAllocator(), outputSchema, output);
-            private final Encoder encoder = task.getFormat();
+            private final Encoder encoder = task.getOutputEncoding();
 
             @Override
             public void finish()

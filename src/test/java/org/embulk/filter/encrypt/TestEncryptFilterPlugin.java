@@ -249,7 +249,7 @@ public class TestEncryptFilterPlugin
     public void base64_encoding() throws Exception
     {
         ConfigSource config = defaultConfig()
-                .set("format", "base64")
+                .set("output_encoding", "base64")
                 .set("column_names", ImmutableList.of("should_be_encrypted"));
         Schema schema = Schema.builder()
                 .add("should_be_encrypted", Types.STRING)
@@ -285,7 +285,7 @@ public class TestEncryptFilterPlugin
     public void hex_encoding() throws Exception
     {
         ConfigSource config = defaultConfig()
-                .set("format", "hex")
+                .set("output_encoding", "hex")
                 .set("column_names", ImmutableList.of("should_be_encrypted"));
         Schema schema = Schema.builder()
                 .add("should_be_encrypted", Types.STRING)
@@ -320,13 +320,13 @@ public class TestEncryptFilterPlugin
     }
 
     @Test
-    public void default_format_config_should_be_base64()
+    public void default_output_encoding_should_be_base64()
     {
         ConfigSource config = defaultConfig()
-                .remove("format")
+                .remove("output_encoding")
                 .set("column_names", emptyList());
         PluginTask task = config.loadConfig(PluginTask.class);
-        assertEquals(task.getFormat(), BASE64);
+        assertEquals(task.getOutputEncoding(), BASE64);
     }
 
     /** Apply the filter to a single record */
@@ -353,7 +353,7 @@ public class TestEncryptFilterPlugin
         return reader;
     }
 
-    /** Conveniently returning a List after apply a filter over the original list*/
+    /** Conveniently returning a List after apply a filter over the original list */
     private List applyFilter(ConfigSource config, Schema schema, List rawRecord)
     {
         try (PageReader reader = applyFilter(config, schema, rawRecord.toArray())) {
@@ -440,7 +440,7 @@ public class TestEncryptFilterPlugin
                 task.getAlgorithm(),
                 task.getKeyHex().orNull(),
                 task.getIvHex().orNull(),
-                task.getFormat());
+                task.getOutputEncoding());
     }
 
     /** Just to be explicit about the algorithm in used */
@@ -458,7 +458,7 @@ public class TestEncryptFilterPlugin
                 algo,
                 task.getKeyHex().orNull(),
                 task.getIvHex().orNull(),
-                task.getFormat());
+                task.getOutputEncoding());
     }
 
     /** Decoding by reversing the originalEncoder */
