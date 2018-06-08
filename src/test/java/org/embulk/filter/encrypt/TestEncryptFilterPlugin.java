@@ -2,10 +2,13 @@ package org.embulk.filter.encrypt;
 
 import com.google.common.collect.ImmutableList;
 import org.embulk.EmbulkTestRuntime;
+import org.embulk.config.ConfigException;
 import org.embulk.config.ConfigSource;
+import org.embulk.config.TaskSource;
 import org.embulk.filter.encrypt.EncryptFilterPlugin.PluginTask;
 import org.embulk.spi.Column;
 import org.embulk.spi.ColumnVisitor;
+import org.embulk.spi.FilterPlugin;
 import org.embulk.spi.PageOutput;
 import org.embulk.spi.PageReader;
 import org.embulk.spi.Schema;
@@ -14,6 +17,7 @@ import org.embulk.spi.type.Types;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
@@ -54,6 +58,9 @@ public class TestEncryptFilterPlugin
 {
     @Rule
     public EmbulkTestRuntime runtime = new EmbulkTestRuntime();
+
+    @Rule
+    public ExpectedException expectedException = ExpectedException.none();
 
     private EncryptFilterPlugin plugin;
 
@@ -157,6 +164,7 @@ public class TestEncryptFilterPlugin
     {
         ConfigSource config = defaultConfig()
                 .set("algorithm", "AES-256-ECB")
+                .remove("iv_hex")
                 .set("column_names", ImmutableList.of("should_be_encrypted"));
         Schema schema = Schema.builder()
                 .add("should_be_encrypted", Types.STRING)
@@ -176,6 +184,7 @@ public class TestEncryptFilterPlugin
     {
         ConfigSource config = defaultConfig()
                 .set("algorithm", "AES-192-ECB")
+                .remove("iv_hex")
                 .set("column_names", ImmutableList.of("should_be_encrypted"));
         Schema schema = Schema.builder()
                 .add("should_be_encrypted", Types.STRING)
@@ -195,6 +204,7 @@ public class TestEncryptFilterPlugin
     {
         ConfigSource config = defaultConfig()
                 .set("algorithm", "AES-128-ECB")
+                .remove("iv_hex")
                 .set("column_names", ImmutableList.of("should_be_encrypted"));
         Schema schema = Schema.builder()
                 .add("should_be_encrypted", Types.STRING)
@@ -265,13 +275,13 @@ public class TestEncryptFilterPlugin
                 plaintext,
                 decrypt(ciphertext,
                         task.getAlgorithm(),
-                        task.getKeyHex().orNull(),
+                        task.getKeyHex(),
                         task.getIvHex().orNull(),
                         BASE64));
         try {
             decrypt(ciphertext,
                     task.getAlgorithm(),
-                    task.getKeyHex().orNull(),
+                    task.getKeyHex(),
                     task.getIvHex().orNull(),
                     HEX);
         }
@@ -301,13 +311,13 @@ public class TestEncryptFilterPlugin
                 plaintext,
                 decrypt(ciphertext,
                         task.getAlgorithm(),
-                        task.getKeyHex().orNull(),
+                        task.getKeyHex(),
                         task.getIvHex().orNull(),
                         HEX));
         try {
             decrypt(ciphertext,
                     task.getAlgorithm(),
-                    task.getKeyHex().orNull(),
+                    task.getKeyHex(),
                     task.getIvHex().orNull(),
                     BASE64);
         }
@@ -329,23 +339,62 @@ public class TestEncryptFilterPlugin
         assertEquals(task.getOutputEncoding(), BASE64);
     }
 
+    @Test
+    // Previously, missing key_hex does throw a ConfigException but doesn't pinpoint the problematic field
+    public void absence_of_encryption_key_should_yell_a_meaningful_ConfigException() throws Exception
+    {
+        ConfigSource config = defaultConfig()
+                .remove("key_hex")
+                .set("column_names", ImmutableList.of("attempt_to_encrypt"));
+        Schema schema = Schema.builder()
+                .add("attempt_to_encrypt", Types.STRING)
+                .build();
+
+        expectedException.expect(ConfigException.class);
+        expectedException.expectMessage("key_hex");
+        applyFilter(config, schema, ImmutableList.of("Try to encrypt me buddy!"));
+    }
+
+    @Test
+    public void absence_of_iv_on_a_required_algroithm_should_yell_a_meaningful_ConfigException() throws Exception
+    {
+        ConfigSource config = defaultConfig()
+                .remove("iv_hex")
+                .set("algorithm", "AES-256-CBC")
+                .set("column_names", ImmutableList.of("attempt_to_encrypt"));
+        Schema schema = Schema.builder()
+                .add("attempt_to_encrypt", Types.STRING)
+                .build();
+
+        expectedException.expect(ConfigException.class);
+        expectedException.expectMessage("iv_hex");
+        applyFilter(config, schema, ImmutableList.of("Try to encrypt me buddy!"));
+    }
+
     /** Apply the filter to a single record */
-    private PageReader applyFilter(ConfigSource config, Schema schema, Object... rawRecord)
+    private PageReader applyFilter(ConfigSource config, final Schema schema, final Object... rawRecord)
     {
         if (rawRecord.length > schema.getColumnCount()) {
             throw new UnsupportedOperationException("applyFilter() only supports a single record, " +
                     "number of supplied values exceed the schema column size.");
         }
-        PluginTask task = config.loadConfig(PluginTask.class);
+        final PluginTask task = config.loadConfig(PluginTask.class);
 
-        MockPageOutput filteredOutput = new MockPageOutput();
+        final MockPageOutput filteredOutput = new MockPageOutput();
 
-        PageOutput originalOutput = plugin.open(task.dump(), schema, schema, filteredOutput);
-        originalOutput.add(buildPage(runtime.getBufferAllocator(), schema, rawRecord).get(0));
-        originalOutput.finish();
-        originalOutput.close();
-
+        plugin.transaction(config, schema, new FilterPlugin.Control()
+        {
+            @Override
+            public void run(TaskSource taskSource, Schema outputSchema)
+            {
+                PageOutput originalOutput = plugin.open(task.dump(), schema, outputSchema, filteredOutput);
+                originalOutput.add(buildPage(runtime.getBufferAllocator(), schema, rawRecord).get(0));
+                originalOutput.finish();
+                originalOutput.close();
+            }
+        });
         assert filteredOutput.pages.size() == 1;
+
         PageReader reader = new PageReader(schema);
         reader.setPage(filteredOutput.pages.get(0));
         reader.nextRecord();
@@ -438,7 +487,7 @@ public class TestEncryptFilterPlugin
         return decrypt(
                 ciphertext,
                 task.getAlgorithm(),
-                task.getKeyHex().orNull(),
+                task.getKeyHex(),
                 task.getIvHex().orNull(),
                 task.getOutputEncoding());
     }
@@ -456,7 +505,7 @@ public class TestEncryptFilterPlugin
         return decrypt(
                 ciphertext,
                 algo,
-                task.getKeyHex().orNull(),
+                task.getKeyHex(),
                 task.getIvHex().orNull(),
                 task.getOutputEncoding());
     }
