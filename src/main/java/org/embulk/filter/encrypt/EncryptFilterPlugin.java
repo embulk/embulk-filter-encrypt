@@ -159,8 +159,7 @@ public class EncryptFilterPlugin
         public Encoder getOutputEncoding();
 
         @Config("key_hex")
-        @ConfigDefault("null")
-        public Optional<String> getKeyHex();
+        public String getKeyHex();
 
         @Config("iv_hex")
         @ConfigDefault("null")
@@ -204,7 +203,7 @@ public class EncryptFilterPlugin
     {
         Algorithm algo = task.getAlgorithm();
 
-        byte[] keyData = BaseEncoding.base16().decode(task.getKeyHex().get());
+        byte[] keyData = BaseEncoding.base16().decode(task.getKeyHex());
         SecretKeySpec key = new SecretKeySpec(keyData, algo.getJavaKeySpecName());
 
         if (algo.useIv()) {
