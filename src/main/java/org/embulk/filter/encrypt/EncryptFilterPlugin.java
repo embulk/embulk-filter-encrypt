@@ -1,47 +1,43 @@
 package org.embulk.filter.encrypt;
 
-import java.util.List;
-import java.util.Set;
-import java.util.HashSet;
-import java.util.EnumSet;
-import javax.crypto.Cipher;
-import javax.crypto.SecretKey;
-import javax.crypto.SecretKeyFactory;
-import javax.crypto.spec.SecretKeySpec;
-import javax.crypto.spec.IvParameterSpec;
-import javax.crypto.spec.PBEKeySpec;
-import javax.crypto.NoSuchPaddingException;
-import javax.crypto.BadPaddingException;
-import javax.crypto.IllegalBlockSizeException;
-import java.security.AlgorithmParameters;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.spec.KeySpec;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 import com.google.common.base.Optional;
 import com.google.common.io.BaseEncoding;
 import org.embulk.config.Config;
 import org.embulk.config.ConfigDefault;
-import org.embulk.config.ConfigDiff;
+import org.embulk.config.ConfigException;
 import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
 import org.embulk.config.TaskSource;
-import org.embulk.config.ConfigException;
 import org.embulk.spi.Column;
-import org.embulk.spi.DataException;
 import org.embulk.spi.ColumnVisitor;
-import org.embulk.spi.type.StringType;
+import org.embulk.spi.DataException;
 import org.embulk.spi.Exec;
 import org.embulk.spi.FilterPlugin;
 import org.embulk.spi.Page;
 import org.embulk.spi.PageBuilder;
-import org.embulk.spi.PageReader;
 import org.embulk.spi.PageOutput;
+import org.embulk.spi.PageReader;
 import org.embulk.spi.Schema;
-import org.embulk.spi.time.Timestamp;
+import org.slf4j.Logger;
+
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.util.EnumSet;
+import java.util.List;
+
+import static java.lang.String.format;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.apache.commons.lang3.StringUtils.join;
 
 public class EncryptFilterPlugin
         implements FilterPlugin
@@ -53,8 +49,7 @@ public class EncryptFilterPlugin
         AES_128_CBC("AES/CBC/PKCS5Padding", "AES", 128, true, "AES-128", "AES-128-CBC"),
         AES_256_ECB("AES/ECB/PKCS5Padding", "AES", 256, false, "AES-256-ECB"),
         AES_192_ECB("AES/ECB/PKCS5Padding", "AES", 192, false, "AES-192-ECB"),
-        AES_128_ECB("AES/ECB/PKCS5Padding", "AES", 128, false, "AES-128-ECB"),
-        ;
+        AES_128_ECB("AES/ECB/PKCS5Padding", "AES", 128, false, "AES-128-ECB");
 
         private final String javaName;
         private final String javaKeySpecName;
@@ -112,15 +107,60 @@ public class EncryptFilterPlugin
         }
     }
 
+    public enum Encoder
+    {
+        BASE64("base64", BaseEncoding.base64()),
+        HEX("hex", BaseEncoding.base16());
+
+        private final BaseEncoding encoding;
+        private final String name;
+
+        Encoder(String name, BaseEncoding encoding)
+        {
+            this.name = name;
+            this.encoding = encoding;
+        }
+
+        public String encode(byte[] bytes)
+        {
+            return encoding.encode(bytes);
+        }
+
+        @JsonCreator
+        public static Encoder fromName(String name)
+        {
+            EnumSet<Encoder> encoders = EnumSet.allOf(Encoder.class);
+            for (Encoder encoder : encoders) {
+                if (encoder.name.equals(name)) {
+                    return encoder;
+                }
+            }
+            throw new ConfigException(
+                    format("Unsupported output encoding '%s'. Supported encodings are %s.",
+                            name,
+                            join(encoders, ", ")));
+        }
+
+        @JsonValue
+        @Override
+        public String toString()
+        {
+            return name;
+        }
+    }
+
     public interface PluginTask
             extends Task
     {
         @Config("algorithm")
         public Algorithm getAlgorithm();
 
+        @Config("output_encoding")
+        @ConfigDefault("\"base64\"")
+        public Encoder getOutputEncoding();
+
         @Config("key_hex")
-        @ConfigDefault("null")
-        public Optional<String> getKeyHex();
+        public String getKeyHex();
 
         @Config("iv_hex")
         @ConfigDefault("null")
@@ -130,19 +170,19 @@ public class EncryptFilterPlugin
         public List<String> getColumnNames();
     }
 
+    private static final Logger log = Exec.getLogger(EncryptFilterPlugin.class);
+
     @Override
     public void transaction(ConfigSource config, Schema inputSchema,
             FilterPlugin.Control control)
     {
         PluginTask task = config.loadConfig(PluginTask.class);
 
-        if (!task.getKeyHex().isPresent()) {
-        }
-        else if (task.getAlgorithm().useIv() && !task.getIvHex().isPresent()) {
+        if (task.getAlgorithm().useIv() && !task.getIvHex().isPresent()) {
             throw new ConfigException("Algorithm '" + task.getAlgorithm() + "' requires initialization vector. Please generate one and set it to iv_hex option.");
         }
         else if (!task.getAlgorithm().useIv() && task.getIvHex().isPresent()) {
-            throw new ConfigException("Algorithm '" + task.getAlgorithm() + "' doesn't use initialization vector. Please remove iv_hex option.");
+            log.warn("Algorithm '" + task.getAlgorithm() + "' doesn't use initialization vector. Please remove iv_hex option.");
         }
 
         // validate configuration
@@ -166,7 +206,7 @@ public class EncryptFilterPlugin
     {
         Algorithm algo = task.getAlgorithm();
 
-        byte[] keyData = BaseEncoding.base16().decode(task.getKeyHex().get());
+        byte[] keyData = BaseEncoding.base16().decode(task.getKeyHex());
         SecretKeySpec key = new SecretKeySpec(keyData, algo.getJavaKeySpecName());
 
         if (algo.useIv()) {
@@ -188,7 +228,7 @@ public class EncryptFilterPlugin
     public PageOutput open(TaskSource taskSource, final Schema inputSchema,
             final Schema outputSchema, final PageOutput output)
     {
-        PluginTask task = taskSource.loadTask(PluginTask.class);
+        final PluginTask task = taskSource.loadTask(PluginTask.class);
 
         final Cipher cipher;
         try {
@@ -207,7 +247,7 @@ public class EncryptFilterPlugin
         return new PageOutput() {
             private final PageReader pageReader = new PageReader(inputSchema);
             private final PageBuilder pageBuilder = new PageBuilder(Exec.getBufferAllocator(), outputSchema, output);
-            private final BaseEncoding base64 = BaseEncoding.base64();
+            private final Encoder encoder = task.getOutputEncoding();
 
             @Override
             public void finish()
@@ -291,7 +331,7 @@ public class EncryptFilterPlugin
                                     // this must not happen because always doFinal is called
                                     throw new DataException(ex);
                                 }
-                                String encoded = base64.encode(encrypted);
+                                String encoded = encoder.encode(encrypted);
                                 pageBuilder.setString(column, encoded);
                             }
                             else {

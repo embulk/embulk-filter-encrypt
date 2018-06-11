@@ -23,7 +23,8 @@ You can apply encryption to password column and get following outputs:
 - **algorithm**: encryption algorithm (see below) (enum, required)
 - **column_names**: names of string columns to encrypt (array of string, required)
 - **key_hex**: encryption key (string, required)
-- **iv_hex**: encyrption initialization vector (string, required if mode of the algorithm is CBC)
+- **iv_hex**: encryption initialization vector (string, required if mode of the algorithm is CBC)
+- **output_encoding**: the encoding of encrypted value, can be either "base64" or "hex" (base16)
 
 ## Algorithms
 
@@ -117,9 +118,11 @@ You can use Hive's `aes_decrypt(input binary, key binary)` function (available s
 ```yaml
 filters:
   - type: encrypt
+    algorithm: AES-256-CBC
     column_names: [password, ip]
     key_hex: 098F6BCD4621D373CADE4E832627B4F60A9172716AE6428409885B8B829CCB05
     iv_hex: C9DD4BB33B827EB1FBA1B16A0074D460
+    output_encoding: hex
 ```
 
 ## Build
