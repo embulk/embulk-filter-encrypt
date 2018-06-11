@@ -20,6 +20,7 @@ import org.embulk.spi.PageBuilder;
 import org.embulk.spi.PageOutput;
 import org.embulk.spi.PageReader;
 import org.embulk.spi.Schema;
+import org.slf4j.Logger;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
@@ -169,6 +170,8 @@ public class EncryptFilterPlugin
         public List<String> getColumnNames();
     }
 
+    private static final Logger log = Exec.getLogger(EncryptFilterPlugin.class);
+
     @Override
     public void transaction(ConfigSource config, Schema inputSchema,
             FilterPlugin.Control control)
@@ -179,7 +182,7 @@ public class EncryptFilterPlugin
             throw new ConfigException("Algorithm '" + task.getAlgorithm() + "' requires initialization vector. Please generate one and set it to iv_hex option.");
         }
         else if (!task.getAlgorithm().useIv() && task.getIvHex().isPresent()) {
-            throw new ConfigException("Algorithm '" + task.getAlgorithm() + "' doesn't use initialization vector. Please remove iv_hex option.");
+            log.warn("Algorithm '" + task.getAlgorithm() + "' doesn't use initialization vector. Please remove iv_hex option.");
         }
 
         // validate configuration

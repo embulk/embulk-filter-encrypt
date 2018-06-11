@@ -356,7 +356,7 @@ public class TestEncryptFilterPlugin
     }
 
     @Test
-    public void absence_of_iv_on_a_required_algroithm_should_yell_a_meaningful_ConfigException() throws Exception
+    public void absence_of_iv_on_a_required_iv_algorithm_should_yell_a_meaningful_ConfigException() throws Exception
     {
         ConfigSource config = defaultConfig()
                 .remove("iv_hex")
@@ -368,6 +368,21 @@ public class TestEncryptFilterPlugin
 
         expectedException.expect(ConfigException.class);
         expectedException.expectMessage("iv_hex");
+        applyFilter(config, schema, ImmutableList.of("Try to encrypt me buddy!"));
+    }
+
+    @Test
+    // Previously, this will throw
+    public void presence_of_iv_on_a_non_iv_algorithm_should_be_silent() throws Exception
+    {
+        ConfigSource config = defaultConfig()
+                .remove("iv_hex")
+                .set("algorithm", "AES-128-ECB")
+                .set("column_names", ImmutableList.of("attempt_to_encrypt"));
+        Schema schema = Schema.builder()
+                .add("attempt_to_encrypt", Types.STRING)
+                .build();
+
         applyFilter(config, schema, ImmutableList.of("Try to encrypt me buddy!"));
     }
 
