@@ -1,3 +1,7 @@
+Release 0.2.0 - 2018-06-13
+
+* Add `output_encoding` config, supports "base64" and "hex".
+
 Release 0.1.0 - 2016-03-01
 
 * The first release.
