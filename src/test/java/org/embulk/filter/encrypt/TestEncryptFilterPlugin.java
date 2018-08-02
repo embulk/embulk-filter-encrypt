@@ -658,7 +658,7 @@ public class TestEncryptFilterPlugin
     }
 
     @Test
-    public void s3_client_should_relect_region_config()
+    public void s3_client_should_reflect_region_config()
     {
         ConfigSource configSource = s3Config()
                 .set("column_names", ImmutableList.of("attempt_to_encrypt"));
@@ -666,6 +666,19 @@ public class TestEncryptFilterPlugin
         AmazonS3 s3Client = plugin.newS3Client(configSource.loadConfig(EncryptFilterPlugin.PluginTask.class).getAWSParams().get());
 
         assertEquals(s3Client.getRegion(), Region.US_East_2);
+    }
+
+    @Test
+    public void s3_client_invalid_region_should_yell_a_meaningful_ConfigException()
+    {
+        ConfigSource configSource = s3Config()
+                .set("column_names", ImmutableList.of("attempt_to_encrypt"));
+        configSource.getNested("aws_params")
+                .set("region", "invalid_region");
+
+        expectedException.expect(ConfigException.class);
+        expectedException.expectMessage("Unable to find a region via the region provider chain");
+        plugin.newS3Client(configSource.loadConfig(EncryptFilterPlugin.PluginTask.class).getAWSParams().get());
     }
 
     /** Apply the filter to a single record */

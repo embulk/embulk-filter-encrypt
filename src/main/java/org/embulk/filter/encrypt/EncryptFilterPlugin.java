@@ -1,6 +1,7 @@
 package org.embulk.filter.encrypt;
 
 import com.amazonaws.AmazonServiceException;
+import com.amazonaws.SdkClientException;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
@@ -237,6 +238,7 @@ public class EncryptFilterPlugin
         public String getPath();
     }
 
+    private static final Yaml yaml = new Yaml(new SafeConstructor(), new Representer(), new DumperOptions(), new YamlTagResolver());
     private static final Logger log = Exec.getLogger(EncryptFilterPlugin.class);
 
     @Override
@@ -257,7 +259,6 @@ public class EncryptFilterPlugin
 
         try {
             fullObject = client.getObject(new GetObjectRequest(bucket, path));
-            Yaml yaml = new Yaml(new SafeConstructor(), new Representer(), new DumperOptions(), new YamlTagResolver());
             return (Map<String, String>) yaml.load(fullObject.getObjectContent());
         }
         catch (AmazonServiceException e) {
@@ -303,10 +304,15 @@ public class EncryptFilterPlugin
             }
         };
 
-        return AmazonS3ClientBuilder.standard()
-                .withRegion(awsParams.getRegion())
-                .withCredentials(awsCredentialsProvider)
-                .build();
+        try {
+            return AmazonS3ClientBuilder.standard()
+                    .withRegion(awsParams.getRegion())
+                    .withCredentials(awsCredentialsProvider)
+                    .build();
+        }
+        catch (SdkClientException e) {
+            throw new ConfigException(e);
+        }
     }
 
     private void validateAndResolveKey(PluginTask task, Schema schema) throws ConfigException
