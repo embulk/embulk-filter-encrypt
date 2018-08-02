@@ -1,5 +1,7 @@
 package org.embulk.filter.encrypt;
 
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.model.Region;
 import com.google.common.collect.ImmutableList;
 import org.embulk.EmbulkTestRuntime;
 import org.embulk.config.ConfigException;
@@ -31,7 +33,9 @@ import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static com.google.common.base.Charsets.UTF_8;
 import static com.google.common.io.BaseEncoding.base16;
@@ -53,6 +57,9 @@ import static org.embulk.spi.PageTestUtils.buildPage;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.spy;
 
 public class TestEncryptFilterPlugin
 {
@@ -71,6 +78,22 @@ public class TestEncryptFilterPlugin
                 .set("algorithm", "AES-256-CBC")
                 .set("key_hex", "D0867C9310D061F17ACD11EB30DE68265DCB79849BE5FB2BE157919D19BF2F42")
                 .set("iv_hex", "2A1D6BD59D2DB50A59364BAD3B9B6544");
+    }
+
+    private ConfigSource s3Config()
+    {
+        ConfigSource awsParams = runtime.getExec().newConfigSource()
+                .set("region", "us-east-2")
+                .set("access_key", "a_access_key")
+                .set("secret_key", "a_secret_key")
+                .set("bucket", "a_bucket")
+                .set("path", "a_path");
+
+        return runtime.getExec().newConfigSource()
+                .set("type", "encrypt")
+                .set("algorithm", "AES-256-CBC")
+                .set("key_type", "s3")
+                .setNested("aws_params", awsParams);
     }
 
     @Before
@@ -275,13 +298,13 @@ public class TestEncryptFilterPlugin
                 plaintext,
                 decrypt(ciphertext,
                         task.getAlgorithm(),
-                        task.getKeyHex(),
+                        task.getKeyHex().get(),
                         task.getIvHex().orNull(),
                         BASE64));
         try {
             decrypt(ciphertext,
                     task.getAlgorithm(),
-                    task.getKeyHex(),
+                    task.getKeyHex().get(),
                     task.getIvHex().orNull(),
                     HEX);
         }
@@ -311,13 +334,13 @@ public class TestEncryptFilterPlugin
                 plaintext,
                 decrypt(ciphertext,
                         task.getAlgorithm(),
-                        task.getKeyHex(),
+                        task.getKeyHex().get(),
                         task.getIvHex().orNull(),
                         HEX));
         try {
             decrypt(ciphertext,
                     task.getAlgorithm(),
-                    task.getKeyHex(),
+                    task.getKeyHex().get(),
                     task.getIvHex().orNull(),
                     BASE64);
         }
@@ -386,14 +409,272 @@ public class TestEncryptFilterPlugin
         applyFilter(config, schema, ImmutableList.of("Try to encrypt me buddy!"));
     }
 
+    @Test()
+    public void encrypt_with_required_IV_algorithm_for_s3() throws Exception
+    {
+        ConfigSource config = s3Config()
+                .set("column_names", ImmutableList.of("should_be_encrypted"));
+        Schema schema = Schema.builder()
+                .add("should_be_encrypted", Types.STRING)
+                .build();
+
+        plugin = spy(plugin);
+        Map<String, String> keys = new HashMap<>();
+        keys.put("key_hex", "D0867C9310D061F17ACD11EB30DE68265DCB79849BE5FB2BE157919D19BF2F42");
+        keys.put("iv_hex", "2A1D6BD59D2DB50A59364BAD3B9B6544");
+        doReturn(keys).when(plugin).retrieveKey(any(String.class), any(String.class), any(AmazonS3.class));
+
+        List rawRecord = ImmutableList.of("My super secret");
+        List filteredRecord = applyFilter(config, schema, rawRecord);
+
+        String plaintext = (String) rawRecord.get(0);
+        String ciphertext = (String) filteredRecord.get(0);
+
+        assertNotEquals(plaintext, ciphertext);
+        config.set("key_hex", keys.get("key_hex"));
+        config.set("iv_hex", keys.get("iv_hex"));
+        assertEquals(plaintext, decrypt(ciphertext, AES_256_CBC, config));
+    }
+
+    @Test()
+    public void encrypt_with_not_required_IV_algorithm_for_s3() throws Exception
+    {
+        ConfigSource config = s3Config()
+                .set("column_names", ImmutableList.of("should_be_encrypted"))
+                .set("algorithm", "AES-256-ECB");
+        Schema schema = Schema.builder()
+                .add("should_be_encrypted", Types.STRING)
+                .build();
+
+        plugin = spy(plugin);
+        Map<String, String> keys = new HashMap<>();
+        keys.put("key_hex", "D0867C9310D061F17ACD11EB30DE68265DCB79849BE5FB2BE157919D19BF2F42");
+        keys.put("iv_hex", "2A1D6BD59D2DB50A59364BAD3B9B6544");
+        doReturn(keys).when(plugin).retrieveKey(any(String.class), any(String.class), any(AmazonS3.class));
+
+        List rawRecord = ImmutableList.of("My super secret");
+        List filteredRecord = applyFilter(config, schema, rawRecord);
+
+        String plaintext = (String) rawRecord.get(0);
+        String ciphertext = (String) filteredRecord.get(0);
+
+        assertNotEquals(plaintext, ciphertext);
+        config.set("key_hex", keys.get("key_hex"));
+        assertEquals(plaintext, decrypt(ciphertext, AES_256_ECB, config));
+    }
+
+    @Test()
+    public void encrypt_with_not_required_IV_algorithm_for_s3_should_ignore_IV() throws Exception
+    {
+        ConfigSource config = s3Config()
+                .set("column_names", ImmutableList.of("should_be_encrypted"))
+                .set("algorithm", "AES-256-ECB");
+        Schema schema = Schema.builder()
+                .add("should_be_encrypted", Types.STRING)
+                .build();
+
+        plugin = spy(plugin);
+        Map<String, String> keys = new HashMap<>();
+        keys.put("key_hex", "D0867C9310D061F17ACD11EB30DE68265DCB79849BE5FB2BE157919D19BF2F42");
+        doReturn(keys).when(plugin).retrieveKey(any(String.class), any(String.class), any(AmazonS3.class));
+
+        List rawRecord = ImmutableList.of("My super secret");
+        List filteredRecord = applyFilter(config, schema, rawRecord);
+
+        String plaintext = (String) rawRecord.get(0);
+        String ciphertext = (String) filteredRecord.get(0);
+
+        assertNotEquals(plaintext, ciphertext);
+        config.set("key_hex", keys.get("key_hex"));
+        assertEquals(plaintext, decrypt(ciphertext, AES_256_ECB, config));
+    }
+
+    @Test
+    public void absence_of_aws_params_for_s3_should_yell_a_meaningful_ConfigException()
+    {
+        ConfigSource config = s3Config()
+                .set("column_names", ImmutableList.of("attempt_to_encrypt"))
+                .remove("aws_params");
+        Schema schema = Schema.builder()
+                .add("attempt_to_encrypt", Types.STRING)
+                .build();
+        expectedException.expect(ConfigException.class);
+        expectedException.expectMessage("AWS Params");
+        applyFilter(config, schema, ImmutableList.of("Try to encrypt me buddy!"));
+    }
+
+    @Test
+    public void absence_of_aws_region_param_for_s3_should_yell_a_meaningful_ConfigException()
+    {
+        ConfigSource config = s3Config()
+                .set("column_names", ImmutableList.of("attempt_to_encrypt"));
+
+        config.getNested("aws_params")
+            .remove("region");
+        Schema schema = Schema.builder()
+                .add("attempt_to_encrypt", Types.STRING)
+                .build();
+        expectedException.expect(ConfigException.class);
+        expectedException.expectMessage("region");
+        applyFilter(config, schema, ImmutableList.of("Try to encrypt me buddy!"));
+    }
+
+    @Test
+    public void absence_of_aws_path_param_for_s3_should_yell_a_meaningful_ConfigException()
+    {
+        ConfigSource config = s3Config()
+                .set("column_names", ImmutableList.of("attempt_to_encrypt"));
+
+        config.getNested("aws_params")
+                .remove("path");
+        Schema schema = Schema.builder()
+                .add("attempt_to_encrypt", Types.STRING)
+                .build();
+        expectedException.expect(ConfigException.class);
+        expectedException.expectMessage("path");
+        applyFilter(config, schema, ImmutableList.of("Try to encrypt me buddy!"));
+    }
+
+    @Test
+    public void absence_of_aws_bucket_param_for_s3_should_yell_a_meaningful_ConfigException()
+    {
+        ConfigSource config = s3Config()
+                .set("column_names", ImmutableList.of("attempt_to_encrypt"));
+
+        config.getNested("aws_params")
+                .remove("bucket");
+        Schema schema = Schema.builder()
+                .add("attempt_to_encrypt", Types.STRING)
+                .build();
+        expectedException.expect(ConfigException.class);
+        expectedException.expectMessage("bucket");
+        applyFilter(config, schema, ImmutableList.of("Try to encrypt me buddy!"));
+    }
+
+    @Test
+    public void absence_of_aws_access_key_param_for_s3_should_yell_a_meaningful_ConfigException()
+    {
+        ConfigSource config = s3Config()
+                .set("column_names", ImmutableList.of("attempt_to_encrypt"));
+
+        config.getNested("aws_params")
+                .remove("access_key");
+        Schema schema = Schema.builder()
+                .add("attempt_to_encrypt", Types.STRING)
+                .build();
+        expectedException.expect(ConfigException.class);
+        expectedException.expectMessage("access_key");
+        applyFilter(config, schema, ImmutableList.of("Try to encrypt me buddy!"));
+    }
+
+    @Test
+    public void absence_of_aws_secret_key_param_for_s3_should_yell_a_meaningful_ConfigException()
+    {
+        ConfigSource config = s3Config()
+                .set("column_names", ImmutableList.of("attempt_to_encrypt"));
+
+        config.getNested("aws_params")
+                .remove("secret_key");
+        Schema schema = Schema.builder()
+                .add("attempt_to_encrypt", Types.STRING)
+                .build();
+        expectedException.expect(ConfigException.class);
+        expectedException.expectMessage("secret_key");
+        applyFilter(config, schema, ImmutableList.of("Try to encrypt me buddy!"));
+    }
+
+    @Test
+    public void null_of_key_retrieval_for_s3_should_yell_a_meaningful_ConfigException()
+    {
+        ConfigSource config = s3Config()
+                .set("column_names", ImmutableList.of("attempt_to_encrypt"));
+        Schema schema = Schema.builder()
+                .add("attempt_to_encrypt", Types.STRING)
+                .build();
+
+        plugin = spy(plugin);
+
+        doReturn(null).when(plugin).retrieveKey(any(String.class), any(String.class), any(AmazonS3.class));
+
+        expectedException.expect(ConfigException.class);
+        expectedException.expectMessage("Key file is in incorrect format or not enable to be retrieved");
+        applyFilter(config, schema, ImmutableList.of("Try to encrypt me buddy!"));
+    }
+
+    @Test
+    public void absence_of_encryption_key_for_s3_should_yell_a_meaningful_ConfigException()
+    {
+        ConfigSource config = s3Config()
+                .set("column_names", ImmutableList.of("attempt_to_encrypt"));
+        Schema schema = Schema.builder()
+                .add("attempt_to_encrypt", Types.STRING)
+                .build();
+
+        plugin = spy(plugin);
+        Map<String, String> keys = new HashMap<>();
+        doReturn(keys).when(plugin).retrieveKey(any(String.class), any(String.class), any(AmazonS3.class));
+
+        expectedException.expect(ConfigException.class);
+        expectedException.expectMessage("key_hex");
+        applyFilter(config, schema, ImmutableList.of("Try to encrypt me buddy!"));
+    }
+
+    @Test
+    public void absence_of_iv_on_a_required_iv_algorithm_for_s3_should_yell_a_meaningful_ConfigException()
+    {
+        ConfigSource config = s3Config()
+                .set("column_names", ImmutableList.of("attempt_to_encrypt"));
+        Schema schema = Schema.builder()
+                .add("attempt_to_encrypt", Types.STRING)
+                .build();
+
+        plugin = spy(plugin);
+        Map<String, String> keys = new HashMap<>();
+        keys.put("key_hex", "D0867C9310D061F17ACD11EB30DE68265DCB79849BE5FB2BE157919D19BF2F42");
+        doReturn(keys).when(plugin).retrieveKey(any(String.class), any(String.class), any(AmazonS3.class));
+
+        expectedException.expect(ConfigException.class);
+        expectedException.expectMessage("iv_hex");
+        applyFilter(config, schema, ImmutableList.of("Try to encrypt me buddy!"));
+    }
+
+    @Test
+    // Previously, this will throw
+    public void presence_of_iv_on_a_non_iv_algorithm_for_s3_should_be_silent()
+    {
+        ConfigSource config = s3Config()
+                .set("algorithm", "AES-128-ECB")
+                .set("column_names", ImmutableList.of("attempt_to_encrypt"));
+        Schema schema = Schema.builder()
+                .add("attempt_to_encrypt", Types.STRING)
+                .build();
+
+        plugin = spy(plugin);
+        Map<String, String> keys = new HashMap<>();
+        keys.put("key_hex", "D0867C9310D061F17ACD11EB30DE68265DCB79849BE5FB2BE157919D19BF2F42");
+        doReturn(keys).when(plugin).retrieveKey(any(String.class), any(String.class), any(AmazonS3.class));
+
+        applyFilter(config, schema, ImmutableList.of("Try to encrypt me buddy!"));
+    }
+
+    @Test
+    public void s3_client_should_relect_region_config()
+    {
+        ConfigSource configSource = s3Config()
+                .set("column_names", ImmutableList.of("attempt_to_encrypt"));
+
+        AmazonS3 s3Client = plugin.newS3Client(configSource.loadConfig(EncryptFilterPlugin.PluginTask.class).getAWSParams().get());
+
+        assertEquals(s3Client.getRegion(), Region.US_East_2);
+    }
+
     /** Apply the filter to a single record */
-    private PageReader applyFilter(ConfigSource config, final Schema schema, final Object... rawRecord)
+    private PageReader applyFilter(final ConfigSource config, final Schema schema, final Object... rawRecord)
     {
         if (rawRecord.length > schema.getColumnCount()) {
             throw new UnsupportedOperationException("applyFilter() only supports a single record, " +
                     "number of supplied values exceed the schema column size.");
         }
-        final PluginTask task = config.loadConfig(PluginTask.class);
 
         final MockPageOutput filteredOutput = new MockPageOutput();
 
@@ -402,7 +683,7 @@ public class TestEncryptFilterPlugin
             @Override
             public void run(TaskSource taskSource, Schema outputSchema)
             {
-                PageOutput originalOutput = plugin.open(task.dump(), schema, outputSchema, filteredOutput);
+                PageOutput originalOutput = plugin.open(taskSource, schema, outputSchema, filteredOutput);
                 originalOutput.add(buildPage(runtime.getBufferAllocator(), schema, rawRecord).get(0));
                 originalOutput.finish();
                 originalOutput.close();
@@ -502,7 +783,7 @@ public class TestEncryptFilterPlugin
         return decrypt(
                 ciphertext,
                 task.getAlgorithm(),
-                task.getKeyHex(),
+                task.getKeyHex().get(),
                 task.getIvHex().orNull(),
                 task.getOutputEncoding());
     }
@@ -520,7 +801,7 @@ public class TestEncryptFilterPlugin
         return decrypt(
                 ciphertext,
                 algo,
-                task.getKeyHex(),
+                task.getKeyHex().get(),
                 task.getIvHex().orNull(),
                 task.getOutputEncoding());
     }
