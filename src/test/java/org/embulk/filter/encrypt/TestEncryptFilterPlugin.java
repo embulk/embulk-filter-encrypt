@@ -669,7 +669,7 @@ public class TestEncryptFilterPlugin
     }
 
     /** Apply the filter to a single record */
-    private PageReader applyFilter(final ConfigSource config, final Schema schema, final Object... rawRecord)
+    private PageReader applyFilter(ConfigSource config, final Schema schema, final Object... rawRecord)
     {
         if (rawRecord.length > schema.getColumnCount()) {
             throw new UnsupportedOperationException("applyFilter() only supports a single record, " +

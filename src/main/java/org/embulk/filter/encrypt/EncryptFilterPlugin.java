@@ -355,7 +355,7 @@ public class EncryptFilterPlugin
 
         // Validate Cipher
         try {
-            getCipher(Cipher.DECRYPT_MODE, task);
+            getCipher(Cipher.ENCRYPT_MODE, task);
         }
         catch (Exception e) {
             throw new ConfigException(e);
