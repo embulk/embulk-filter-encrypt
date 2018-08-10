@@ -1,4 +1,4 @@
-Release 0.2.1 - 2018-08-08
+Release 0.2.1 - 2018-08-15
 
 * Add `key_type` config, supports "inline" and "s3".
 
