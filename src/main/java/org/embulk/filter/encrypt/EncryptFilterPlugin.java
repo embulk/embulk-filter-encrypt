@@ -1,7 +1,17 @@
 package org.embulk.filter.encrypt;
 
+import com.amazonaws.AmazonServiceException;
+import com.amazonaws.SdkClientException;
+import com.amazonaws.auth.AWSCredentials;
+import com.amazonaws.auth.AWSCredentialsProvider;
+import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.amazonaws.services.s3.model.GetObjectRequest;
+import com.amazonaws.services.s3.model.S3Object;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Optional;
 import com.google.common.io.BaseEncoding;
 import org.embulk.config.Config;
@@ -10,6 +20,7 @@ import org.embulk.config.ConfigException;
 import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
 import org.embulk.config.TaskSource;
+import org.embulk.config.YamlTagResolver;
 import org.embulk.spi.Column;
 import org.embulk.spi.ColumnVisitor;
 import org.embulk.spi.DataException;
@@ -21,6 +32,10 @@ import org.embulk.spi.PageOutput;
 import org.embulk.spi.PageReader;
 import org.embulk.spi.Schema;
 import org.slf4j.Logger;
+import org.yaml.snakeyaml.DumperOptions;
+import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
+import org.yaml.snakeyaml.representer.Representer;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
@@ -29,12 +44,15 @@ import javax.crypto.NoSuchPaddingException;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
+import java.io.IOException;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 
+import static com.google.common.base.Strings.isNullOrEmpty;
 import static java.lang.String.format;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.commons.lang3.StringUtils.join;
@@ -42,7 +60,7 @@ import static org.apache.commons.lang3.StringUtils.join;
 public class EncryptFilterPlugin
         implements FilterPlugin
 {
-    public static enum Algorithm
+    public enum Algorithm
     {
         AES_256_CBC("AES/CBC/PKCS5Padding", "AES", 256, true, "AES", "AES-256", "AES-256-CBC"),
         AES_192_CBC("AES/CBC/PKCS5Padding", "AES", 192, true, "AES-192", "AES-192-CBC"),
@@ -57,7 +75,7 @@ public class EncryptFilterPlugin
         private final boolean useIv;
         private String[] displayNames;
 
-        private Algorithm(String javaName, String javaKeySpecName, int keyLength, boolean useIv, String... displayNames)
+        Algorithm(String javaName, String javaKeySpecName, int keyLength, boolean useIv, String... displayNames)
         {
             this.javaName = javaName;
             this.javaKeySpecName = javaKeySpecName;
@@ -149,6 +167,25 @@ public class EncryptFilterPlugin
         }
     }
 
+    public enum KeyType
+    {
+        INLINE,
+        S3;
+
+        @JsonCreator
+        public static KeyType of(String value)
+        {
+            return KeyType.valueOf(value.toUpperCase());
+        }
+
+        @Override
+        @JsonValue
+        public String toString()
+        {
+            return super.toString().toLowerCase();
+        }
+    }
+
     public interface PluginTask
             extends Task
     {
@@ -159,17 +196,49 @@ public class EncryptFilterPlugin
         @ConfigDefault("\"base64\"")
         public Encoder getOutputEncoding();
 
+        @Config("key_type")
+        @ConfigDefault("\"inline\"")
+        KeyType getKeyType();
+
         @Config("key_hex")
-        public String getKeyHex();
+        @ConfigDefault("null")
+        public Optional<String> getKeyHex();
+
+        public void setKeyHex(Optional<String> key);
 
         @Config("iv_hex")
         @ConfigDefault("null")
         public Optional<String> getIvHex();
 
+        public void setIvHex(Optional<String> iv);
+
+        @Config("aws_params")
+        @ConfigDefault("null")
+        public Optional<AWSParams> getAWSParams();
+
         @Config("column_names")
         public List<String> getColumnNames();
     }
 
+    public interface AWSParams extends Task
+    {
+        @Config("region")
+        public String getRegion();
+
+        @Config("access_key")
+        public String getAccessKey();
+
+        @Config("secret_key")
+        public String getSecretKey();
+
+        @Config("bucket")
+        public String getBucket();
+
+        @Config("path")
+        public String getPath();
+    }
+
+    private static final Yaml yaml = new Yaml(new SafeConstructor(), new Representer(), new DumperOptions(), new YamlTagResolver());
     private static final Logger log = Exec.getLogger(EncryptFilterPlugin.class);
 
     @Override
@@ -178,27 +247,134 @@ public class EncryptFilterPlugin
     {
         PluginTask task = config.loadConfig(PluginTask.class);
 
-        if (task.getAlgorithm().useIv() && !task.getIvHex().isPresent()) {
-            throw new ConfigException("Algorithm '" + task.getAlgorithm() + "' requires initialization vector. Please generate one and set it to iv_hex option.");
+        validateAndResolveKey(task, inputSchema);
+
+        control.run(task.dump(), inputSchema);
+    }
+
+    @VisibleForTesting
+    public Map<String, String> retrieveKey(final String bucket, final String path, final AmazonS3 client)
+    {
+        S3Object fullObject = null;
+
+        try {
+            fullObject = client.getObject(new GetObjectRequest(bucket, path));
+            if (fullObject == null) {
+                throw new ConfigException("S3 key file is not enabled to be retrieved");
+            }
+            return (Map<String, String>) yaml.load(fullObject.getObjectContent());
         }
-        else if (!task.getAlgorithm().useIv() && task.getIvHex().isPresent()) {
-            log.warn("Algorithm '" + task.getAlgorithm() + "' doesn't use initialization vector. Please remove iv_hex option.");
+        catch (AmazonServiceException e) {
+            // The call was transmitted successfully, but Amazon S3 couldn't process
+            // it, so it returned an error response.
+            if (e.getErrorType().equals(AmazonServiceException.ErrorType.Client)) {
+                // HTTP 40x errors. auth error, bucket doesn't exist, etc. See AWS document for the full list:
+                // http://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html
+                if (e.getStatusCode() != 400
+                        || "ExpiredToken".equalsIgnoreCase(e.getErrorCode())) {
+                    throw new ConfigException(e);
+                }
+            }
+            throw e;
+        }
+        catch (ClassCastException e) {
+            throw new ConfigException("S3 key file content is unexpected format");
+        }
+        finally {
+            // To ensure that the network connection doesn't remain open, close any open input streams.
+            if (fullObject != null) {
+                try {
+                    fullObject.close();
+                }
+                catch (IOException e) {
+                    log.warn("Failure to close S3 Object input stream", e);
+                }
+            }
+        }
+    }
+
+    @VisibleForTesting
+    public AmazonS3 newS3Client(final AWSParams awsParams)
+    {
+        AWSCredentialsProvider awsCredentialsProvider = new AWSCredentialsProvider()
+        {
+            @Override
+            public AWSCredentials getCredentials()
+            {
+                return new BasicAWSCredentials(awsParams.getAccessKey(), awsParams.getSecretKey());
+            }
+
+            @Override
+            public void refresh()
+            {
+            }
+        };
+
+        try {
+            return AmazonS3ClientBuilder.standard()
+                    .withRegion(awsParams.getRegion())
+                    .withCredentials(awsCredentialsProvider)
+                    .build();
+        }
+        catch (SdkClientException e) {
+            throw new ConfigException(e);
+        }
+    }
+
+    private void validateAndResolveKey(PluginTask task, Schema schema) throws ConfigException
+    {
+        switch (task.getKeyType()) {
+            case INLINE:
+                if (!task.getKeyHex().isPresent()) {
+                    throw new ConfigException("Field 'key_hex' is required but not set");
+                }
+                if (task.getAlgorithm().useIv() && !task.getIvHex().isPresent()) {
+                    throw new ConfigException("Algorithm '" + task.getAlgorithm() + "' requires initialization vector. Please generate one and set it to iv_hex option.");
+                }
+                else if (!task.getAlgorithm().useIv() && task.getIvHex().isPresent()) {
+                    log.warn("Algorithm '" + task.getAlgorithm() + "' doesn't use initialization vector. iv_hex is ignored");
+                }
+                break;
+            case S3:
+                if (!task.getAWSParams().isPresent()) {
+                    throw new ConfigException("AWS Params are required for S3 Key type");
+                }
+                AWSParams params = task.getAWSParams().get();
+                AmazonS3 s3Client = newS3Client(params);
+                Map<String, String> keys = retrieveKey(params.getBucket(), params.getPath(), s3Client);
+
+                String key = keys.get("key_hex");
+                if (isNullOrEmpty(key)) {
+                    throw new ConfigException("Field 'key_hex' is required but not set");
+                }
+                String iv = keys.get("iv_hex");
+                if (task.getAlgorithm().useIv() && isNullOrEmpty(iv)) {
+                    throw new ConfigException("Algorithm '" + task.getAlgorithm() + "' requires initialization vector. Please generate one and set it to iv_hex option.");
+                }
+                else if (!task.getAlgorithm().useIv() && !isNullOrEmpty(iv)) {
+                    log.warn("Algorithm '" + task.getAlgorithm() + "' doesn't use initialization vector. iv_hex is ignored");
+                }
+                task.setKeyHex(Optional.of(key));
+                if (!isNullOrEmpty(iv)) {
+                    task.setIvHex(Optional.of(iv));
+                }
+                break;
+            default:
+                throw new ConfigException(String.format("Key type [%s] is not supported", task.getKeyType().toString()));
         }
 
-        // validate configuration
+        // Validate Cipher
         try {
             getCipher(Cipher.ENCRYPT_MODE, task);
         }
-        catch (Exception ex) {
-            throw new ConfigException(ex);
+        catch (Exception e) {
+            throw new ConfigException(e);
         }
 
         // validate column_names
         for (String name : task.getColumnNames()) {
-            inputSchema.lookupColumn(name);
+            schema.lookupColumn(name);
         }
-
-        control.run(task.dump(), inputSchema);
     }
 
     private Cipher getCipher(int mode, PluginTask task)
@@ -206,7 +382,7 @@ public class EncryptFilterPlugin
     {
         Algorithm algo = task.getAlgorithm();
 
-        byte[] keyData = BaseEncoding.base16().decode(task.getKeyHex());
+        byte[] keyData = BaseEncoding.base16().decode(task.getKeyHex().get());
         SecretKeySpec key = new SecretKeySpec(keyData, algo.getJavaKeySpecName());
 
         if (algo.useIv()) {
