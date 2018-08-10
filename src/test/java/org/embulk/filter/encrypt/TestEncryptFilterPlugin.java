@@ -584,24 +584,6 @@ public class TestEncryptFilterPlugin
     }
 
     @Test
-    public void null_of_key_retrieval_for_s3_should_yell_a_meaningful_ConfigException()
-    {
-        ConfigSource config = s3Config()
-                .set("column_names", ImmutableList.of("attempt_to_encrypt"));
-        Schema schema = Schema.builder()
-                .add("attempt_to_encrypt", Types.STRING)
-                .build();
-
-        plugin = spy(plugin);
-
-        doReturn(null).when(plugin).retrieveKey(any(String.class), any(String.class), any(AmazonS3.class));
-
-        expectedException.expect(ConfigException.class);
-        expectedException.expectMessage("Key file is in incorrect format or not enable to be retrieved");
-        applyFilter(config, schema, ImmutableList.of("Try to encrypt me buddy!"));
-    }
-
-    @Test
     public void absence_of_encryption_key_for_s3_should_yell_a_meaningful_ConfigException()
     {
         ConfigSource config = s3Config()

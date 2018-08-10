@@ -259,6 +259,9 @@ public class EncryptFilterPlugin
 
         try {
             fullObject = client.getObject(new GetObjectRequest(bucket, path));
+            if (fullObject == null) {
+                throw new ConfigException("S3 key file is not enabled to be retrieved");
+            }
             return (Map<String, String>) yaml.load(fullObject.getObjectContent());
         }
         catch (AmazonServiceException e) {
@@ -273,6 +276,9 @@ public class EncryptFilterPlugin
                 }
             }
             throw e;
+        }
+        catch (ClassCastException e) {
+            throw new ConfigException("S3 key file content is unexpected format");
         }
         finally {
             // To ensure that the network connection doesn't remain open, close any open input streams.
@@ -336,9 +342,7 @@ public class EncryptFilterPlugin
                 AWSParams params = task.getAWSParams().get();
                 AmazonS3 s3Client = newS3Client(params);
                 Map<String, String> keys = retrieveKey(params.getBucket(), params.getPath(), s3Client);
-                if (keys == null) {
-                    throw new ConfigException("Key file is in incorrect format or not enable to be retrieved");
-                }
+
                 String key = keys.get("key_hex");
                 if (isNullOrEmpty(key)) {
                     throw new ConfigException("Field 'key_hex' is required but not set");
