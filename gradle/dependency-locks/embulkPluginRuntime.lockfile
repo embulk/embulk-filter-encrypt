@@ -1,0 +1,15 @@
+# This is a Gradle generated file for dependency locking.
+# Manual edits can break the build and are not advised.
+# This file is expected to be part of source control.
+com.amazonaws:aws-java-sdk-core:1.11.253
+com.amazonaws:aws-java-sdk-kms:1.11.253
+com.amazonaws:aws-java-sdk-s3:1.11.253
+com.amazonaws:jmespath-java:1.11.253
+com.fasterxml.jackson.dataformat:jackson-dataformat-cbor:2.6.7
+commons-codec:commons-codec:1.9
+commons-logging:commons-logging:1.2
+org.apache.httpcomponents:httpclient:4.5.2
+org.apache.httpcomponents:httpcore:4.4.4
+org.embulk:embulk-util-snakeyaml:0.1.0
+org.yaml:snakeyaml:1.18
+software.amazon.ion:ion-java:1.0.2

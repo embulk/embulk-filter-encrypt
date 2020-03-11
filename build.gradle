@@ -1,39 +1,73 @@
 plugins {
-    id "com.jfrog.bintray" version "1.1"
-    id "com.github.jruby-gradle.base" version "0.1.5"
     id "java"
+    id "maven-publish"
     id "checkstyle"
+    id "org.embulk.embulk-plugins" version "0.3.1"
 }
-import com.github.jrubygradle.JRubyExec
+
 repositories {
     mavenCentral()
     jcenter()
 }
-configurations {
-    provided
+
+group = "org.embulk.filter.encrypt"
+version = "0.2.2"
+description = "Encrypt"
+
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+tasks.withType(JavaCompile) {
+    options.compilerArgs << "-Xlint:deprecation" << "-Xlint:unchecked"
 }
-
-version = "0.2.1"
-
-sourceCompatibility = 1.7
-targetCompatibility = 1.7
 
 dependencies {
-    compile  "org.embulk:embulk-core:0.8.6"
-    provided "org.embulk:embulk-core:0.8.6"
-    compile "com.amazonaws:aws-java-sdk-s3:1.11.253"
+    compileOnly "org.embulk:embulk-core:0.9.23"
+    compile("com.amazonaws:aws-java-sdk-s3:1.11.253") {
+        exclude group: "com.fasterxml.jackson.core", module: "jackson-databind"
+        exclude group: "com.fasterxml.jackson.core", module: "jackson-annotations"
+        exclude group: "com.fasterxml.jackson.core", module: "jackson-core"
+        exclude group: "joda-time", module: "joda-time"
+    }
+    compile "org.yaml:snakeyaml:1.18"
+    compile "org.embulk:embulk-util-snakeyaml:0.1.0"
 
-    testCompile "junit:junit:4.+"
-    testCompile "org.embulk:embulk-core:0.8.18:tests"
-    testCompile "org.mockito:mockito-core:2.+"
+    testCompile "junit:junit:4.13"
+    testCompile "org.embulk:embulk-core:0.9.23"
+    testCompile "org.embulk:embulk-core:0.9.23:tests"
+    testCompile "org.embulk:embulk-deps-buffer:0.9.23"
+    testCompile "org.embulk:embulk-deps-config:0.9.23"
+    testCompile "org.mockito:mockito-core:2.28.2"
 }
 
-task classpath(type: Copy, dependsOn: ["jar"]) {
-    doFirst { file("classpath").deleteDir() }
-    from (configurations.runtime - configurations.provided + files(jar.archivePath))
-    into "classpath"
+embulkPlugin {
+    mainClass = "org.embulk.filter.encrypt.EncryptFilterPlugin"
+    category = "filter"
+    type = "encrypt"
 }
-clean { delete "classpath" }
+
+publishing {
+    publications {
+        embulkPluginMaven(MavenPublication) {  // Publish it with "publishEmbulkPluginMavenPublicationToMavenRepository".
+            from components.java  // Must be "components.java". The dependency modification works only for it.
+        }
+    }
+    repositories {
+        // TODO: Configure some public Maven repo(s).
+    }
+}
+
+gem {
+    authors = [ "Sadayuki Furuhashi" ]
+    email = [ "frsyuki@gmail.com" ]
+    summary = "Encrypt columns using AES"
+    homepage = "https://github.com/embulk/embulk-filter-encrypt"
+    licenses = [ "Apache 2.0" ]
+}
+
+gemPush {
+    host = "https://rubygems.org"
+}
 
 checkstyle {
     configFile = file("${project.rootDir}/config/checkstyle/checkstyle.xml")
@@ -51,47 +85,3 @@ task checkstyle(type: Checkstyle) {
     classpath = sourceSets.main.output + sourceSets.test.output
     source = sourceSets.main.allJava + sourceSets.test.allJava
 }
-
-task gem(type: JRubyExec, dependsOn: ["gemspec", "classpath"]) {
-    jrubyArgs "-rrubygems/gem_runner", "-eGem::GemRunner.new.run(ARGV)", "build"
-    script "${project.name}.gemspec"
-    doLast { ant.move(file: "${project.name}-${project.version}.gem", todir: "pkg") }
-}
-
-task gemPush(type: JRubyExec, dependsOn: ["gem"]) {
-    jrubyArgs "-rrubygems/gem_runner", "-eGem::GemRunner.new.run(ARGV)", "push"
-    script "pkg/${project.name}-${project.version}.gem"
-}
-
-task "package"(dependsOn: ["gemspec", "classpath"]) << {
-    println "> Build succeeded."
-    println "> You can run embulk with '-L ${file(".").absolutePath}' argument."
-}
-
-task gemspec {
-    ext.gemspecFile = file("${project.name}.gemspec")
-    inputs.file "build.gradle"
-    outputs.file gemspecFile
-    doLast { gemspecFile.write($/
-Gem::Specification.new do |spec|
-  spec.name          = "${project.name}"
-  spec.version       = "${project.version}"
-  spec.authors       = ["Sadayuki Furuhashi"]
-  spec.summary       = %[Encrypt columns using AES]
-  spec.description   = %[Encrypt]
-  spec.email         = ["frsyuki@gmail.com"]
-  spec.licenses      = ["Apache 2.0"]
-  spec.homepage      = "https://github.com/embulk/embulk-filter-encrypt"
-
-  spec.files         = `git ls-files`.split("\n") + Dir["classpath/*.jar"]
-  spec.test_files    = spec.files.grep(%r"^(test|spec)/")
-  spec.require_paths = ["lib"]
-
-  #spec.add_dependency 'YOUR_GEM_DEPENDENCY', ['~> YOUR_GEM_DEPENDENCY_VERSION']
-  spec.add_development_dependency 'bundler', ['~> 1.0']
-  spec.add_development_dependency 'rake', ['>= 10.0']
-end
-/$)
-    }
-}
-clean { delete "${project.name}.gemspec" }

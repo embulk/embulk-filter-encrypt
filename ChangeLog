@@ -1,3 +1,8 @@
+Release 0.2.2 - 2020-03-11
+
+* Built with the "org.embulk.embulk-plugins" Gradle plugin.
+* Use its own SnakeYAML library.
+
 Release 0.2.1 - 2018-08-15
 
 * Add `key_type` config, supports "inline" and "s3".
@@ -9,4 +14,3 @@ Release 0.2.0 - 2018-06-13
 Release 0.1.0 - 2016-03-01
 
 * The first release.
-
