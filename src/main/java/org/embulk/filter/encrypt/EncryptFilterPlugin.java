@@ -20,7 +20,6 @@ import org.embulk.config.ConfigException;
 import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
 import org.embulk.config.TaskSource;
-import org.embulk.config.YamlTagResolver;
 import org.embulk.spi.Column;
 import org.embulk.spi.ColumnVisitor;
 import org.embulk.spi.DataException;
@@ -31,7 +30,9 @@ import org.embulk.spi.PageBuilder;
 import org.embulk.spi.PageOutput;
 import org.embulk.spi.PageReader;
 import org.embulk.spi.Schema;
+import org.embulk.util.snakeyaml.EmbulkYamlTagResolver;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
@@ -238,8 +239,8 @@ public class EncryptFilterPlugin
         public String getPath();
     }
 
-    private static final Yaml yaml = new Yaml(new SafeConstructor(), new Representer(), new DumperOptions(), new YamlTagResolver());
-    private static final Logger log = Exec.getLogger(EncryptFilterPlugin.class);
+    private static final Yaml yaml = new Yaml(new SafeConstructor(), new Representer(), new DumperOptions(), new EmbulkYamlTagResolver());
+    private static final Logger log = LoggerFactory.getLogger(EncryptFilterPlugin.class);
 
     @Override
     public void transaction(ConfigSource config, Schema inputSchema,
