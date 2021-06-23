@@ -1,8 +1,9 @@
 plugins {
     id "java"
     id "maven-publish"
+    id "signing"
     id "checkstyle"
-    id "org.embulk.embulk-plugins" version "0.3.1"
+    id "org.embulk.embulk-plugins" version "0.4.2"
 }
 
 repositories {
@@ -10,8 +11,8 @@ repositories {
     jcenter()
 }
 
-group = "org.embulk.filter.encrypt"
-version = "0.2.2"
+group = "org.embulk"
+version = "0.3.0-SNAPSHOT"
 description = "Encrypt"
 
 sourceCompatibility = 1.8
@@ -19,6 +20,7 @@ targetCompatibility = 1.8
 
 tasks.withType(JavaCompile) {
     options.compilerArgs << "-Xlint:deprecation" << "-Xlint:unchecked"
+    options.encoding = "UTF-8"
 }
 
 dependencies {
@@ -46,6 +48,13 @@ embulkPlugin {
     type = "encrypt"
 }
 
+javadoc {
+    options {
+        locale = "en_US"
+        encoding = "UTF-8"
+    }
+}
+
 publishing {
     publications {
         embulkPluginMaven(MavenPublication) {  // Publish it with "publishEmbulkPluginMavenPublicationToMavenRepository".
@@ -55,6 +64,10 @@ publishing {
     repositories {
         // TODO: Configure some public Maven repo(s).
     }
+}
+
+signing {
+    sign publishing.publications.maven
 }
 
 gem {
