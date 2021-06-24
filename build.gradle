@@ -137,6 +137,22 @@ publishing {
                 }
 
                 developers {
+                    developer {
+                        name = "Sadayuki Furuhashi"
+                        email = "frsyuki@gmail.com"
+                    }
+                    developer {
+                        name = "Huy Le"
+                        email = "huy.lenq@gmail.com"
+                    }
+                    developer {
+                        name = "Vinh Vo"
+                        email = "vinhvd@gmail.com"
+                    }
+                    developer {
+                        name = "Dai MIKURUBE"
+                        email = "dmikurube@treasure-data.com"
+                    }
                 }
 
                 scm {
