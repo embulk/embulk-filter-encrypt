@@ -8,7 +8,6 @@ plugins {
 
 repositories {
     mavenCentral()
-    jcenter()
 }
 
 group = "org.embulk"
@@ -23,22 +22,67 @@ tasks.withType(JavaCompile) {
     options.encoding = "UTF-8"
 }
 
+java {
+    withJavadocJar()
+    withSourcesJar()
+}
+
 dependencies {
-    compileOnly "org.embulk:embulk-core:0.9.23"
+    compileOnly "org.embulk:embulk-api:0.10.31"
+    compileOnly "org.embulk:embulk-spi:0.10.31"
+
     compile("com.amazonaws:aws-java-sdk-s3:1.11.253") {
+        // They conflict with embulk-core. They are once excluded here,
+        // and added explicitly with versions exactly the same with embulk-core:0.10.31.
         exclude group: "com.fasterxml.jackson.core", module: "jackson-databind"
         exclude group: "com.fasterxml.jackson.core", module: "jackson-annotations"
         exclude group: "com.fasterxml.jackson.core", module: "jackson-core"
         exclude group: "joda-time", module: "joda-time"
+
+        // commons-logging api is provided by jcl-over-slf4j below.
+        exclude group: "commons-logging", module: "commons-logging"
     }
+
+    compile("org.embulk:embulk-util-config:0.3.1") {
+        // They conflict with embulk-core. They are once excluded here,
+        // and added explicitly with versions exactly the same with embulk-core:0.10.31.
+        exclude group: "com.fasterxml.jackson.core", module: "jackson-annotations"
+        exclude group: "com.fasterxml.jackson.core", module: "jackson-core"
+        exclude group: "com.fasterxml.jackson.core", module: "jackson-databind"
+        exclude group: "com.fasterxml.jackson.datatype", module: "jackson-datatype-jdk8"
+        exclude group: "javax.validation", module: "validation-api"
+    }
+
+    // They are once excluded from transitive dependencies of other dependencies,
+    // and added explicitly with versions exactly the same with embulk-core:0.10.31.
+    compile "com.fasterxml.jackson.core:jackson-annotations:2.6.7"
+    compile "com.fasterxml.jackson.core:jackson-core:2.6.7"
+    compile "com.fasterxml.jackson.core:jackson-databind:2.6.7"
+    compile "com.fasterxml.jackson.datatype:jackson-datatype-jdk8:2.6.7"
+    compile "javax.validation:validation-api:1.1.0.Final"
+    compile "joda-time:joda-time:2.9.2"
+
+    compile("org.slf4j:jcl-over-slf4j:1.7.30") {
+        // commons-logging api is provided by jcl-over-slf4j below.
+        exclude group: "commons-logging", module: "commons-logging"
+
+        // slf4j-api conflicts with embulk-api. It should be excluded.
+        exclude group: "org.slf4j", module: "slf4j-api"
+    }
+
+    // Guava is needed for com.google.common.io.BaseEncoding.
+    // Keeping this Guava at 18.0 so that it is compatible with embulk-core v0.10 or earlier.
+    // TODO: Update this Guava when Embulk v0.11 is widely used.
+    compile "com.google.guava:guava:18.0"
+
     compile "org.yaml:snakeyaml:1.18"
     compile "org.embulk:embulk-util-snakeyaml:0.1.0"
 
     testCompile "junit:junit:4.13"
-    testCompile "org.embulk:embulk-core:0.9.23"
-    testCompile "org.embulk:embulk-core:0.9.23:tests"
-    testCompile "org.embulk:embulk-deps-buffer:0.9.23"
-    testCompile "org.embulk:embulk-deps-config:0.9.23"
+    testCompile "org.embulk:embulk-core:0.10.31"
+    testCompile "org.embulk:embulk-core:0.10.31:tests"
+    testCompile "org.embulk:embulk-junit4:0.10.31"
+    testCompile "org.embulk:embulk-deps:0.10.31"
     testCompile "org.mockito:mockito-core:2.28.2"
 }
 
@@ -57,12 +101,55 @@ javadoc {
 
 publishing {
     publications {
-        embulkPluginMaven(MavenPublication) {  // Publish it with "publishEmbulkPluginMavenPublicationToMavenRepository".
+        maven(MavenPublication) {
+            groupId = project.group
+            artifactId = project.name
+
             from components.java  // Must be "components.java". The dependency modification works only for it.
+            // javadocJar and sourcesJar are added by java.withJavadocJar() and java.withSourcesJar() above.
+            // See: https://docs.gradle.org/current/javadoc/org/gradle/api/plugins/JavaPluginExtension.html
+
+            pom {  // https://central.sonatype.org/pages/requirements.html
+                packaging "jar"
+
+                name = project.name
+                description = project.description
+                url = "https://www.embulk.org/"
+
+                licenses {
+                    license {
+                        // http://central.sonatype.org/pages/requirements.html#license-information
+                        name = "The Apache License, Version 2.0"
+                        url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
+                    }
+                }
+
+                developers {
+                }
+
+                scm {
+                    connection = "scm:git:git://github.com/embulk/embulk-filter-encrypt.git"
+                    developerConnection = "scm:git:git@github.com:embulk/embulk-filter-encrypt.git"
+                    url = "https://github.com/embulk/embulk-filter-encrypt"
+                }
+            }
         }
     }
+
     repositories {
-        // TODO: Configure some public Maven repo(s).
+        maven {  // publishMavenPublicationToMavenCentralRepository
+            name = "mavenCentral"
+            if (project.version.endsWith("-SNAPSHOT")) {
+                url "https://oss.sonatype.org/content/repositories/snapshots"
+            } else {
+                url "https://oss.sonatype.org/service/local/staging/deploy/maven2"
+            }
+
+            credentials {
+                username = project.hasProperty("ossrhUsername") ? ossrhUsername : ""
+                password = project.hasProperty("ossrhPassword") ? ossrhPassword : ""
+            }
+        }
     }
 }
 
