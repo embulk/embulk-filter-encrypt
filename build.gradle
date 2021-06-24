@@ -99,6 +99,18 @@ javadoc {
     }
 }
 
+jar {
+    from rootProject.file("LICENSE")
+}
+
+sourcesJar {
+    from rootProject.file("LICENSE")
+}
+
+javadocJar {
+    from rootProject.file("LICENSE")
+}
+
 publishing {
     publications {
         maven(MavenPublication) {
@@ -162,7 +174,11 @@ gem {
     email = [ "frsyuki@gmail.com" ]
     summary = "Encrypt columns using AES"
     homepage = "https://github.com/embulk/embulk-filter-encrypt"
-    licenses = [ "Apache 2.0" ]
+    licenses = [ "Apache-2.0" ]
+
+    from rootProject.file("LICENSE")
+    from rootProject.file("NOTICE_GEM")
+    rename ("NOTICE_GEM", "NOTICE")
 }
 
 gemPush {
