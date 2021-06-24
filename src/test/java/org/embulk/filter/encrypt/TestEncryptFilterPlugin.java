@@ -292,20 +292,20 @@ public class TestEncryptFilterPlugin
 
         String ciphertext = (String) applyFilter(config, schema, ImmutableList.of(plaintext)).get(0);
 
-        PluginTask task = config.loadConfig(PluginTask.class);
+        final PluginTask task = EncryptFilterPlugin.CONFIG_MAPPER.map(config, PluginTask.class);
 
         assertEquals(
                 plaintext,
                 decrypt(ciphertext,
                         task.getAlgorithm(),
                         task.getKeyHex().get(),
-                        task.getIvHex().orNull(),
+                        task.getIvHex().orElse(null),
                         BASE64));
         try {
             decrypt(ciphertext,
                     task.getAlgorithm(),
                     task.getKeyHex().get(),
-                    task.getIvHex().orNull(),
+                    task.getIvHex().orElse(null),
                     HEX);
         }
         catch (IllegalArgumentException ex) {
@@ -328,20 +328,20 @@ public class TestEncryptFilterPlugin
 
         String ciphertext = (String) applyFilter(config, schema, ImmutableList.of(plaintext)).get(0);
 
-        PluginTask task = config.loadConfig(PluginTask.class);
+        final PluginTask task = EncryptFilterPlugin.CONFIG_MAPPER.map(config, PluginTask.class);
 
         assertEquals(
                 plaintext,
                 decrypt(ciphertext,
                         task.getAlgorithm(),
                         task.getKeyHex().get(),
-                        task.getIvHex().orNull(),
+                        task.getIvHex().orElse(null),
                         HEX));
         try {
             decrypt(ciphertext,
                     task.getAlgorithm(),
                     task.getKeyHex().get(),
-                    task.getIvHex().orNull(),
+                    task.getIvHex().orElse(null),
                     BASE64);
         }
         // Since hex/base16 is a totally valid subset of base64, this won't yield
@@ -358,7 +358,7 @@ public class TestEncryptFilterPlugin
         ConfigSource config = defaultConfig()
                 .remove("output_encoding")
                 .set("column_names", emptyList());
-        PluginTask task = config.loadConfig(PluginTask.class);
+        final PluginTask task = EncryptFilterPlugin.CONFIG_MAPPER.map(config, PluginTask.class);
         assertEquals(task.getOutputEncoding(), BASE64);
     }
 
@@ -645,7 +645,8 @@ public class TestEncryptFilterPlugin
         ConfigSource configSource = s3Config()
                 .set("column_names", ImmutableList.of("attempt_to_encrypt"));
 
-        AmazonS3 s3Client = plugin.newS3Client(configSource.loadConfig(EncryptFilterPlugin.PluginTask.class).getAWSParams().get());
+        final AmazonS3 s3Client = plugin.newS3Client(
+                EncryptFilterPlugin.CONFIG_MAPPER.map(configSource, EncryptFilterPlugin.PluginTask.class).getAWSParams().get());
 
         assertEquals(s3Client.getRegion(), Region.US_East_2);
     }
@@ -660,7 +661,8 @@ public class TestEncryptFilterPlugin
 
         expectedException.expect(ConfigException.class);
         expectedException.expectMessage("Unable to find a region via the region provider chain");
-        plugin.newS3Client(configSource.loadConfig(EncryptFilterPlugin.PluginTask.class).getAWSParams().get());
+        plugin.newS3Client(
+                EncryptFilterPlugin.CONFIG_MAPPER.map(configSource, EncryptFilterPlugin.PluginTask.class).getAWSParams().get());
     }
 
     /** Apply the filter to a single record */
@@ -774,12 +776,12 @@ public class TestEncryptFilterPlugin
             BadPaddingException,
             InvalidAlgorithmParameterException
     {
-        PluginTask task = config.loadConfig(PluginTask.class);
+        final PluginTask task = EncryptFilterPlugin.CONFIG_MAPPER.map(config, PluginTask.class);
         return decrypt(
                 ciphertext,
                 task.getAlgorithm(),
                 task.getKeyHex().get(),
-                task.getIvHex().orNull(),
+                task.getIvHex().orElse(null),
                 task.getOutputEncoding());
     }
 
@@ -792,12 +794,12 @@ public class TestEncryptFilterPlugin
             BadPaddingException,
             InvalidAlgorithmParameterException
     {
-        PluginTask task = config.loadConfig(PluginTask.class);
+        final PluginTask task = EncryptFilterPlugin.CONFIG_MAPPER.map(config, PluginTask.class);
         return decrypt(
                 ciphertext,
                 algo,
                 task.getKeyHex().get(),
-                task.getIvHex().orNull(),
+                task.getIvHex().orElse(null),
                 task.getOutputEncoding());
     }
 
